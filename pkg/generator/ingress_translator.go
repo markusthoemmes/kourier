@@ -77,7 +77,7 @@ func newTranslatedIngress(ingressName string, ingressNamespace string) translate
 func (translator *IngressTranslator) translateIngress(ingress *v1alpha1.Ingress, extAuthzEnabled bool) (*translatedIngress, error) {
 	res := newTranslatedIngress(ingress.Name, ingress.Namespace)
 
-	for _, ingressTLS := range ingress.GetSpec().TLS {
+	for _, ingressTLS := range ingress.Spec.TLS {
 		sniMatch, err := sniMatchFromIngressTLS(ingressTLS, translator.kubeclient)
 
 		if err != nil {
@@ -95,7 +95,7 @@ func (translator *IngressTranslator) translateIngress(ingress *v1alpha1.Ingress,
 		res.sniMatches = append(res.sniMatches, sniMatch)
 	}
 
-	for _, rule := range ingress.GetSpec().Rules {
+	for _, rule := range ingress.Spec.Rules {
 
 		var ruleRoute []*route.Route
 
@@ -188,7 +188,7 @@ func (translator *IngressTranslator) translateIngress(ingress *v1alpha1.Ingress,
 		var virtualHost, internalVirtualHost route.VirtualHost
 		if extAuthzEnabled {
 
-			visibility := ingress.GetSpec().Visibility
+			visibility := ingress.Spec.Visibility
 			if visibility == "" { // Needed because visibility is optional
 				visibility = v1alpha1.IngressVisibilityClusterLocal
 			}
@@ -208,7 +208,7 @@ func (translator *IngressTranslator) translateIngress(ingress *v1alpha1.Ingress,
 			internalVirtualHost = envoy.NewVirtualHost(ingress.GetName(), internalDomains, ruleRoute)
 		}
 
-		if knative.RuleIsExternal(rule, ingress.GetSpec().Visibility) {
+		if knative.RuleIsExternal(rule, ingress.Spec.Visibility) {
 			res.externalVirtualHosts = append(res.externalVirtualHosts, &virtualHost)
 		}
 
