@@ -22,8 +22,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"knative.dev/pkg/controller"
-
 	v2 "github.com/envoyproxy/go-control-plane/envoy/api/v2"
 )
 
@@ -54,6 +52,10 @@ func (cb *Callbacks) OnStreamClosed(id int64) {
 
 func (cb *Callbacks) OnStreamRequest(streamid int64, req *v2.DiscoveryRequest) error {
 	if req.ErrorDetail != nil {
+		if cb.OnError != nil {
+			cb.OnError()
+		}
+
 		cb.Logger.Infof("OnStreamRequest Error Node : %v <---> StreamId : %d <---> Error : Code -> %v"+
 			" <------> Message"+
 			" -> %v <---------> Details -> %v", req.Node.Id, streamid, req.ErrorDetail.Code, req.ErrorDetail.Message, req.ErrorDetail.Details)
@@ -71,6 +73,6 @@ func (cb *Callbacks) OnFetchResponse(req *v2.DiscoveryRequest, resp *v2.Discover
 }
 
 type Callbacks struct {
-	Logger *zap.SugaredLogger
-	Impl   controller.Impl
+	Logger  *zap.SugaredLogger
+	OnError func()
 }

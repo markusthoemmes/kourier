@@ -64,8 +64,33 @@ func NewController(ctx context.Context, cmw configmap.Watcher) *controller.Impl 
 	knativeClient := knativeclient.Get(ctx)
 	logger := logging.FromContext(ctx)
 
+	ingressInformer := ingressinformer.Get(ctx)
+	endpointsInformer := endpointsinformer.Get(ctx)
+	podInformer := podinformer.Get(ctx)
+
+	caches := generator.NewCaches(logger.Named("caches"))
+	extAuthZConfig := addExtAuthz(caches)
+
+	c := &Reconciler{
+		IngressLister: ingressInformer.Lister(),
+		kubeClient:    kubernetesClient,
+		knativeClient: knativeClient,
+		CurrentCaches: caches,
+		logger:        logger.Named("reconciler"),
+		ExtAuthz:      extAuthZConfig.Enabled,
+	}
+
+	impl := controller.NewImpl(c, logger, controllerName)
+
+	// Setup XDS Server
 	var callbacks = envoy.Callbacks{
 		Logger: logger,
+		OnError: func() {
+			impl.FilteredGlobalResync(func(obj interface{}) bool {
+				ingress := obj.(*v1alpha1.Ingress)
+				return !ingress.Status.IsReady()
+			}, ingressInformer.Informer())
+		},
 	}
 
 	envoyXdsServer := envoy.NewXdsServer(
@@ -76,25 +101,9 @@ func NewController(ctx context.Context, cmw configmap.Watcher) *controller.Impl 
 	go envoyXdsServer.RunManagementServer()
 	go envoyXdsServer.RunGateway()
 
-	ingressInformer := ingressinformer.Get(ctx)
-	endpointsInformer := endpointsinformer.Get(ctx)
-	podInformer := podinformer.Get(ctx)
+	c.EnvoyXDSServer = envoyXdsServer
 
-	caches := generator.NewCaches(logger.Named("caches"))
-	extAuthZConfig := addExtAuthz(caches)
-
-	c := &Reconciler{
-		IngressLister:  ingressInformer.Lister(),
-		EnvoyXDSServer: envoyXdsServer,
-		kubeClient:     kubernetesClient,
-		knativeClient:  knativeClient,
-		CurrentCaches:  caches,
-		logger:         logger.Named("reconciler"),
-		ExtAuthz:       extAuthZConfig.Enabled,
-	}
-
-	impl := controller.NewImpl(c, logger, controllerName)
-
+	// Setup status probing
 	readyCallback := func(ing *v1alpha1.Ingress) {
 		logger.Debugf("Ready callback triggered for ingress: %s/%s", ing.Namespace, ing.Name)
 		impl.EnqueueKey(types.NamespacedName{Namespace: ing.Namespace, Name: ing.Name})
