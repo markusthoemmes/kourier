@@ -62,15 +62,19 @@ const (
 func NewController(ctx context.Context, cmw configmap.Watcher) *controller.Impl {
 	kubernetesClient := kubeclient.Get(ctx)
 	knativeClient := knativeclient.Get(ctx)
+	logger := logging.FromContext(ctx)
+
+	var callbacks = envoy.Callbacks{
+		Logger: logger,
+	}
 
 	envoyXdsServer := envoy.NewXdsServer(
 		gatewayPort,
 		managementPort,
+		&callbacks,
 	)
 	go envoyXdsServer.RunManagementServer()
 	go envoyXdsServer.RunGateway()
-
-	logger := logging.FromContext(ctx)
 
 	ingressInformer := ingressinformer.Get(ctx)
 	endpointsInformer := endpointsinformer.Get(ctx)
